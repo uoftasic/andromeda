@@ -1,7 +1,7 @@
 # Andromeda
 
 SystemVerilog RTL for the Andromeda CPU core. Every unit is verified on its own
-with [cocotb](https://www.cocotb.org/) 2.0 and Icarus Verilog 11, then the whole
+with [cocotb](https://www.cocotb.org/) 2.0 and Icarus Verilog 12, then the whole
 core is verified from `top/`.
 
 ## Directory structure
@@ -109,13 +109,7 @@ named `*_pkg.sv` are compiled before all other sources.
 
 ### 3. RTL coding style
 
-- Start every RTL file with `` `default_nettype none `` and end it with
-  `` `default_nettype wire ``. Without it, a typo in a signal name silently
-  creates a new 1-bit wire.
-- Sequential logic uses `always_ff @(posedge clk)` with non-blocking `<=` only.
-- Combinational logic uses `always_comb` or `assign` with blocking `=` only.
-  Assign every signal a default at the top of each `always_comb` and give every
-  `case` a `default`, so no latches are inferred.
+
 - `rtl/` holds no simulation-only code: no `initial` blocks, `#` delays or
   `$display`. Testbench behaviour lives in Python.
 - Connect instance ports by name (`.clk(clk)`), never by position.
@@ -138,49 +132,12 @@ Every channel between units or pipeline stages uses a valid/ready handshake:
 - `valid` must not depend combinationally on `ready`. `ready` may depend on
   `valid`. This rule prevents combinational loops between units.
 
-### 5. Icarus Verilog 11 compatibility
 
-All code must compile with the Icarus Verilog 11 installed here. The results
-below were tested on this machine:
-
-| Construct                                               | Icarus 11 |
-|---------------------------------------------------------|-----------|
-| `package`, `import pkg::*`, `$clog2`, generate loops     | Works     |
-| `typedef enum`, enums as ports, `unique case`            | Works     |
-| `typedef struct packed`, used unqualified after `import` | Works     |
-| Unpacked array ports, immediate `assert`                 | Works     |
-| Struct type written with its package prefix (`core_pkg::uop_t`) | **Compiler crash** |
-| Assignment patterns (`'{default: '0}`)                   | **Fails** (use `'0`) |
-| `interface` / `modport`                                  | **Fails** |
-| Concurrent assertions (`assert property`)                | **Fails** |
-| `inside`, `case ... inside`                              | **Fails** |
-
-To use a struct from a package, import the package in the module header and
-use the type name on its own:
-
-```systemverilog
-module alu
-  import core_pkg::*;
-#(
-  parameter int WIDTH = 32
-) (
-  input  logic clk,
-  input  logic rst_n,
-  input  uop_t uop          // OK: struct type used unqualified after the import
-  // input core_pkg::uop_t uop   // crashes Icarus 11
-);
-```
-
-If Icarus rejects a construct that isn't listed here, rewrite the code without
-it and add the construct to this table.
-
-### 6. Example module
+### 5. Example module
 
 This module follows every rule above:
 
 ```systemverilog
-`default_nettype none
-
 // One-stage adder with valid/ready handshakes on both sides.
 module alu_add_pipe #(
   parameter int WIDTH = 32
@@ -226,53 +183,102 @@ module alu_add_pipe #(
 
 endmodule
 
-`default_nettype wire
 ```
 
 ## Verification rules
 
 - Every unit has `sim/test_<unit>.py`, which is the Makefile's default
   `COCOTB_TEST_MODULES`.
-- Tests check themselves with `assert`. A test that needs someone to read a
-  waveform doesn't count.
-- Every new or changed module gets at least one test that exercises it.
-- Drive `clk` with a cocotb `Clock`, and hold `rst_n` low for at least 5 cycles
-  before applying stimulus.
+- Tests check themselves with `assert` and print clear, understandable output.
+  Log each step and each check as a plain sentence with `cocotb.log.info(...)`,
+  and give every `assert` a message that says what was expected and what
+  actually happened. A test that needs someone to read a waveform doesn't
+  count.
 - Where you can, check against a Python reference model instead of hand-typed
   expected values.
 
-A test for the example module above:
+A test for the example module above. It logs every step, and each `assert`
+explains itself if it fails:
 
 ```python
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
 
+WIDTH = 32
+
 
 async def reset(dut, cycles=5):
-    """Hold rst_n low for `cycles` clock cycles."""
+    """Hold rst_n low for `cycles` clock cycles, then release it."""
+    cocotb.log.info(f"Holding rst_n low for {cycles} cycles")
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, cycles)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
+    cocotb.log.info("Reset released")
 
 
 @cocotb.test()
 async def test_add(dut):
+    """Send a few additions through the adder and check every sum."""
+    cocotb.log.info("Starting a 10 ns clock on clk")
     Clock(dut.clk, 10, unit="ns").start()
     dut.req_valid.value = 0
     dut.rsp_ready.value = 1
     await reset(dut)
 
-    dut.req_a.value = 3
-    dut.req_b.value = 4
-    dut.req_valid.value = 1
-    await RisingEdge(dut.clk)  # request is accepted on this edge
-    dut.req_valid.value = 0
+    # (a, b) pairs to add. The last one overflows 32 bits and wraps to 0.
+    cases = [(3, 4), (0, 0), (100, 23), (2**WIDTH - 1, 1)]
 
-    await ReadOnly()
-    assert dut.rsp_valid.value == 1
-    assert dut.rsp_sum.value == 7
+    for n, (a, b) in enumerate(cases, start=1):
+        expected = (a + b) % 2**WIDTH  # Python reference model
+
+        dut.req_a.value = a
+        dut.req_b.value = b
+        dut.req_valid.value = 1
+        await RisingEdge(dut.clk)  # request is accepted on this edge
+        dut.req_valid.value = 0
+
+        await ReadOnly()  # wait for the flops to update before reading outputs
+        assert dut.rsp_valid.value == 1, (
+            f"Case {n}: rsp_valid should be 1 one cycle after the request "
+            f"was accepted, but it is {dut.rsp_valid.value}"
+        )
+        got = int(dut.rsp_sum.value)
+        assert got == expected, (
+            f"Case {n}: {a} + {b} should be {expected}, but rsp_sum is {got}"
+        )
+        cocotb.log.info(f"Case {n}/{len(cases)}: {a} + {b} = {got}  OK")
+
+        await RisingEdge(dut.clk)  # leave the read-only phase before driving again
+
+    cocotb.log.info(f"All {len(cases)} additions matched the reference model")
+```
+
+A passing run prints:
+
+```
+     0.00ns INFO     test                               Starting a 10 ns clock on clk
+     0.00ns INFO     test                               Holding rst_n low for 5 cycles
+    50.00ns INFO     test                               Reset released
+    60.00ns INFO     test                               Case 1/4: 3 + 4 = 7  OK
+    80.00ns INFO     test                               Case 2/4: 0 + 0 = 0  OK
+   100.00ns INFO     test                               Case 3/4: 100 + 23 = 123  OK
+   120.00ns INFO     test                               Case 4/4: 4294967295 + 1 = 0  OK
+   130.00ns INFO     test                               All 4 additions matched the reference model
+                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0 ...
+```
+
+If the adder is broken (here it subtracts instead of adding), the failure says
+exactly what went wrong:
+
+```
+     0.00ns INFO     test                               Starting a 10 ns clock on clk
+     0.00ns INFO     test                               Holding rst_n low for 5 cycles
+    50.00ns INFO     test                               Reset released
+    60.00ns WARNING  cocotb.Test test_add.test_add      Case 1: 3 + 4 should be 7, but rsp_sum is 4294967295
+                                                        AssertionError: Case 1: 3 + 4 should be 7, but rsp_sum is 4294967295
+                                                        ** TESTS=1 PASS=0 FAIL=1 SKIP=0 ...
 ```
 
 Linting is optional for now but recommended. Verilator 4.038 is installed:
@@ -306,14 +312,3 @@ verilator --lint-only -Wall ALU/rtl/*.sv
 2. Add the directory name to `UNITS` in `top/sim/Makefile`.
 3. Add the unit to the tables in this README.
 
-## Open decisions
-
-These need an answer before units are built in parallel:
-
-- **ISA and microarchitecture.** Which ISA, in-order or out-of-order, issue
-  width, and pipeline depth.
-- **Where core-wide types live.** Types such as a `uop_t` that several units
-  share need one package, for example `common/rtl/core_pkg.sv`. Right now a
-  unit's sim can only see its own `rtl/`.
-- **Inter-unit interface spec.** The signal list for each channel between units
-  (Fetch → Dispatch, Dispatch → ALU/FPU/LSU, units → Writeback).
