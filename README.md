@@ -1,7 +1,7 @@
 # Andromeda
 
 SystemVerilog RTL for the Andromeda CPU core. Every unit is verified on its own
-with [cocotb](https://www.cocotb.org/) 2.0 and Icarus Verilog 11, then the whole
+with [cocotb](https://www.cocotb.org/) 2.0 and Icarus Verilog 12, then the whole
 core is verified from `top/`.
 
 ## Directory structure
@@ -109,13 +109,7 @@ named `*_pkg.sv` are compiled before all other sources.
 
 ### 3. RTL coding style
 
-- Start every RTL file with `` `default_nettype none `` and end it with
-  `` `default_nettype wire ``. Without it, a typo in a signal name silently
-  creates a new 1-bit wire.
-- Sequential logic uses `always_ff @(posedge clk)` with non-blocking `<=` only.
-- Combinational logic uses `always_comb` or `assign` with blocking `=` only.
-  Assign every signal a default at the top of each `always_comb` and give every
-  `case` a `default`, so no latches are inferred.
+
 - `rtl/` holds no simulation-only code: no `initial` blocks, `#` delays or
   `$display`. Testbench behaviour lives in Python.
 - Connect instance ports by name (`.clk(clk)`), never by position.
@@ -138,49 +132,12 @@ Every channel between units or pipeline stages uses a valid/ready handshake:
 - `valid` must not depend combinationally on `ready`. `ready` may depend on
   `valid`. This rule prevents combinational loops between units.
 
-### 5. Icarus Verilog 11 compatibility
 
-All code must compile with the Icarus Verilog 11 installed here. The results
-below were tested on this machine:
-
-| Construct                                               | Icarus 11 |
-|---------------------------------------------------------|-----------|
-| `package`, `import pkg::*`, `$clog2`, generate loops     | Works     |
-| `typedef enum`, enums as ports, `unique case`            | Works     |
-| `typedef struct packed`, used unqualified after `import` | Works     |
-| Unpacked array ports, immediate `assert`                 | Works     |
-| Struct type written with its package prefix (`core_pkg::uop_t`) | **Compiler crash** |
-| Assignment patterns (`'{default: '0}`)                   | **Fails** (use `'0`) |
-| `interface` / `modport`                                  | **Fails** |
-| Concurrent assertions (`assert property`)                | **Fails** |
-| `inside`, `case ... inside`                              | **Fails** |
-
-To use a struct from a package, import the package in the module header and
-use the type name on its own:
-
-```systemverilog
-module alu
-  import core_pkg::*;
-#(
-  parameter int WIDTH = 32
-) (
-  input  logic clk,
-  input  logic rst_n,
-  input  uop_t uop          // OK: struct type used unqualified after the import
-  // input core_pkg::uop_t uop   // crashes Icarus 11
-);
-```
-
-If Icarus rejects a construct that isn't listed here, rewrite the code without
-it and add the construct to this table.
-
-### 6. Example module
+### 5. Example module
 
 This module follows every rule above:
 
 ```systemverilog
-`default_nettype none
-
 // One-stage adder with valid/ready handshakes on both sides.
 module alu_add_pipe #(
   parameter int WIDTH = 32
@@ -226,18 +183,14 @@ module alu_add_pipe #(
 
 endmodule
 
-`default_nettype wire
 ```
 
 ## Verification rules
 
 - Every unit has `sim/test_<unit>.py`, which is the Makefile's default
   `COCOTB_TEST_MODULES`.
-- Tests check themselves with `assert`. A test that needs someone to read a
+- Tests check themselves with `assert` and clear udnerstandable output texts. A test that needs someone to read a
   waveform doesn't count.
-- Every new or changed module gets at least one test that exercises it.
-- Drive `clk` with a cocotb `Clock`, and hold `rst_n` low for at least 5 cycles
-  before applying stimulus.
 - Where you can, check against a Python reference model instead of hand-typed
   expected values.
 
@@ -306,14 +259,3 @@ verilator --lint-only -Wall ALU/rtl/*.sv
 2. Add the directory name to `UNITS` in `top/sim/Makefile`.
 3. Add the unit to the tables in this README.
 
-## Open decisions
-
-These need an answer before units are built in parallel:
-
-- **ISA and microarchitecture.** Which ISA, in-order or out-of-order, issue
-  width, and pipeline depth.
-- **Where core-wide types live.** Types such as a `uop_t` that several units
-  share need one package, for example `common/rtl/core_pkg.sv`. Right now a
-  unit's sim can only see its own `rtl/`.
-- **Inter-unit interface spec.** The signal list for each channel between units
-  (Fetch → Dispatch, Dispatch → ALU/FPU/LSU, units → Writeback).
