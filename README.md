@@ -189,43 +189,96 @@ endmodule
 
 - Every unit has `sim/test_<unit>.py`, which is the Makefile's default
   `COCOTB_TEST_MODULES`.
-- Tests check themselves with `assert` and clear udnerstandable output texts. A test that needs someone to read a
-  waveform doesn't count.
+- Tests check themselves with `assert` and print clear, understandable output.
+  Log each step and each check as a plain sentence with `cocotb.log.info(...)`,
+  and give every `assert` a message that says what was expected and what
+  actually happened. A test that needs someone to read a waveform doesn't
+  count.
 - Where you can, check against a Python reference model instead of hand-typed
   expected values.
 
-A test for the example module above:
+A test for the example module above. It logs every step, and each `assert`
+explains itself if it fails:
 
 ```python
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
 
+WIDTH = 32
+
 
 async def reset(dut, cycles=5):
-    """Hold rst_n low for `cycles` clock cycles."""
+    """Hold rst_n low for `cycles` clock cycles, then release it."""
+    cocotb.log.info(f"Holding rst_n low for {cycles} cycles")
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, cycles)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
+    cocotb.log.info("Reset released")
 
 
 @cocotb.test()
 async def test_add(dut):
+    """Send a few additions through the adder and check every sum."""
+    cocotb.log.info("Starting a 10 ns clock on clk")
     Clock(dut.clk, 10, unit="ns").start()
     dut.req_valid.value = 0
     dut.rsp_ready.value = 1
     await reset(dut)
 
-    dut.req_a.value = 3
-    dut.req_b.value = 4
-    dut.req_valid.value = 1
-    await RisingEdge(dut.clk)  # request is accepted on this edge
-    dut.req_valid.value = 0
+    # (a, b) pairs to add. The last one overflows 32 bits and wraps to 0.
+    cases = [(3, 4), (0, 0), (100, 23), (2**WIDTH - 1, 1)]
 
-    await ReadOnly()
-    assert dut.rsp_valid.value == 1
-    assert dut.rsp_sum.value == 7
+    for n, (a, b) in enumerate(cases, start=1):
+        expected = (a + b) % 2**WIDTH  # Python reference model
+
+        dut.req_a.value = a
+        dut.req_b.value = b
+        dut.req_valid.value = 1
+        await RisingEdge(dut.clk)  # request is accepted on this edge
+        dut.req_valid.value = 0
+
+        await ReadOnly()  # wait for the flops to update before reading outputs
+        assert dut.rsp_valid.value == 1, (
+            f"Case {n}: rsp_valid should be 1 one cycle after the request "
+            f"was accepted, but it is {dut.rsp_valid.value}"
+        )
+        got = int(dut.rsp_sum.value)
+        assert got == expected, (
+            f"Case {n}: {a} + {b} should be {expected}, but rsp_sum is {got}"
+        )
+        cocotb.log.info(f"Case {n}/{len(cases)}: {a} + {b} = {got}  OK")
+
+        await RisingEdge(dut.clk)  # leave the read-only phase before driving again
+
+    cocotb.log.info(f"All {len(cases)} additions matched the reference model")
+```
+
+A passing run prints:
+
+```
+     0.00ns INFO     test                               Starting a 10 ns clock on clk
+     0.00ns INFO     test                               Holding rst_n low for 5 cycles
+    50.00ns INFO     test                               Reset released
+    60.00ns INFO     test                               Case 1/4: 3 + 4 = 7  OK
+    80.00ns INFO     test                               Case 2/4: 0 + 0 = 0  OK
+   100.00ns INFO     test                               Case 3/4: 100 + 23 = 123  OK
+   120.00ns INFO     test                               Case 4/4: 4294967295 + 1 = 0  OK
+   130.00ns INFO     test                               All 4 additions matched the reference model
+                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0 ...
+```
+
+If the adder is broken (here it subtracts instead of adding), the failure says
+exactly what went wrong:
+
+```
+     0.00ns INFO     test                               Starting a 10 ns clock on clk
+     0.00ns INFO     test                               Holding rst_n low for 5 cycles
+    50.00ns INFO     test                               Reset released
+    60.00ns WARNING  cocotb.Test test_add.test_add      Case 1: 3 + 4 should be 7, but rsp_sum is 4294967295
+                                                        AssertionError: Case 1: 3 + 4 should be 7, but rsp_sum is 4294967295
+                                                        ** TESTS=1 PASS=0 FAIL=1 SKIP=0 ...
 ```
 
 Linting is optional for now but recommended. Verilator 4.038 is installed:
