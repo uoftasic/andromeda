@@ -80,6 +80,8 @@ package andromeda_pkg;
   localparam int unsigned MEM_SIZE_W  = 2;   // byte 00 / half 01 / word 10
   localparam int unsigned EXC_CAUSE_W = 5;   // exception cause (mcause code)
   localparam int unsigned FFLAGS_W    = 5;   // FP exception flags {NV, DZ, OF, UF, NX}
+  localparam int unsigned CSR_ADDR_W  = 12;  // CSR address (instr[31:20])
+  localparam int unsigned CSR_OP_W    = 3;   // csr_unit request op: CSRRW/S/C and immediate forms
 
   // ===========================================================================
   // 4. Execution port indices (Section 1.2)
