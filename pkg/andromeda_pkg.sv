@@ -23,6 +23,8 @@ package andromeda_pkg;
   //    Change sizes here only. Derived widths below follow automatically.
   // ===========================================================================
 
+  localparam int unsigned RST_VEC    = 32'h0;
+
   localparam int unsigned XLEN       = 32;  // data and address width
 
   localparam int unsigned FETCH_W    = 4;   // instructions per cycle, in-order stages
