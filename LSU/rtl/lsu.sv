@@ -4,7 +4,14 @@
 // they commit.
 module lsu
   import andromeda_pkg::*;
-(
+#(
+   localparam int unsigned LQ_CNT_W   = $clog2(LQ_DEPTH + 1),
+   localparam int unsigned SQ_CNT_W   = $clog2(SQ_DEPTH + 1),
+   localparam int unsigned CM_CNT_W   = $clog2(COMMIT_W + 1),
+   localparam int unsigned UOP_W      = 36 + ROB_IDX_W + PREG_IDX_W + LQ_ID_W + SQ_ID_W, 
+   localparam int unsigned WB_W       = 72 + ROB_IDX_W + PREG_IDX_W,
+   localparam int unsigned WAKEUP_W   = 1 + PREG_IDX_W
+)(
   input  logic                              clk,
   input  logic                              rst_n,
 
@@ -50,5 +57,21 @@ module lsu
   input  logic [LQ_IDX_W-1:0]               dmem_resp_id,     // Matches dmem_req_id
   input  logic                              dmem_resp_err     // Access fault
 );
+
+    assign in_ready       = 1'b1;
+    assign lq_alloc_id    = '0;
+    assign sq_alloc_id    = '0;
+    assign sq_tail        = '0;
+    assign lq_free_cnt    = '0;  
+    assign sq_free_cnt    ='0;         
+    assign sq_empty       = 1'b1;            
+    assign wb             = '0;
+    assign wakeup         = '0;              
+    assign dmem_req_valid = 1'b0;
+    assign dmem_req_we    = 1'b0;   
+    assign dmem_req_addr  = '0; 
+    assign dmem_req_wdata = '0;
+    assign dmem_req_wstrb = '0;
+    assign dmem_req_id    = '0;
 
 endmodule
