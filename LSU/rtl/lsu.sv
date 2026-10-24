@@ -51,43 +51,4 @@ module lsu
   input  logic                              dmem_resp_err     // Access fault
 );
 
-
-    always_ff (@posedge clk) begin
-        if (!rst_n) begin
-           in_ready       <= 'b0;
-           lq_alloc_id    <= 'b0;
-           sq_alloc_id    <= 'b0;
-           sq_tail        <= 'b0;
-           lq_free_cnt    <= 'b0;
-           sq_free_cnt    <= 'b0;
-           sq_empty       <= 'b0;
-           wb             <= 'b0;
-           wakeup         <= 'b0;
-           dmem_req_valid <= 'b0;
-           dmem_req_ready <= 'b0;
-           dmem_req_we    <= 'b0;
-           dmem_req_addr  <= 'b0;
-           dmem_req_wdata <= 'b0;
-           dmem_req_wstrb <= 'b0;
-           dmem_req_id    <= 'b0;
-        end else begin
-           in_ready       <= 'b1;
-           lq_alloc_id    <= 'b0;
-           sq_alloc_id    <= 'b0;
-           sq_tail        <= 'b0;
-           lq_free_cnt    <= 'd8;
-           sq_free_cnt    <= 'd8;
-           sq_empty       <= 'b1;
-           wb             <= 'b0;
-           wakeup         <= 'b0;
-           dmem_req_valid <= 'b0;
-           dmem_req_ready <= 'b0;
-           dmem_req_we    <= 'b0;
-           dmem_req_addr  <= 'b0;
-           dmem_req_wdata <= 'b0;
-           dmem_req_wstrb <= 'b0;
-           dmem_req_id    <= 'b0;
-        end
-    end
-    
 endmodule
