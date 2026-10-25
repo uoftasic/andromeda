@@ -62,4 +62,66 @@ module rob
   output logic                              trace_trap      // An exception or interrupt was taken this cycle
 );
 
+  // --storage--
+
+  // circular buffer
+  rob_id_t head_q, tail_q; // note {wrap, 0-31}
+  logic [ROB_DEPTH-1:0] valid_instructions_q;
+  logic [ROB_DEPTH-1:0] completed_instructions_q;
+
+  // --allocate--
+
+  // keep track of wrap around
+  logic [ROB_IDX_W-1:0] alloc_idx [DISPATCH_W]; // {5 bits by 32 lines}
+  logic [$clog2(DISPATCH_W+1)-1:0] alloc_cnt;
+
+  // Combination logic
+  always_comb begin
+
+    alloc_cnt = '0;
+
+    // tell dispatch which ROB slots to populate
+    for (int i = 0; i < DISPATCH_W; i++) begin
+      alloc_id[i] = tail_q + ROB_ID_W'(i); // which ROB slots to populate
+      alloc_idx[i] = ROB_IDX_W'(tail_q + ROB_ID_W'(i)); // casts to lower 5 bits
+      alloc_cnt += alloc_valid[i];
+    end
+
+    head_id = head_q;
+    free_cnt = ROB_ID_W'(ROB_DEPTH) - (tail_q - head_q);
+  end
+
+// keep track of valid instructions and move tail
+  always_ff @(posedge clk or negedge rst_n) begin
+    // set everything to zero upon reset
+    if (!rst_n) begin
+
+      head_q <= '0;
+      tail_q <= '0;
+      valid_instructions_q <= '0;
+      completed_instructions_q <= '0;
+
+    end
+
+    else begin
+
+      // find valid instructions and move tail
+      for (int i = 0; i < DISPATCH_W; i++) begin 
+        if (alloc_valid[i]) begin
+          valid_instructions_q[alloc_idx[i]] <= 1;
+          completed_instructions_q[alloc_idx[i]] <= 0;
+        end
+      end
+
+      tail_q <= tail_q + ROB_ID_W'(alloc_cnt);
+
+    end
+
+  end
+
+  // --retire--
+
+
+
+
 endmodule
