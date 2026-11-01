@@ -111,7 +111,9 @@ named `*_pkg.sv` are compiled before all other sources.
 
 
 - `rtl/` holds no simulation-only code: no `initial` blocks, `#` delays or
-  `$display`. Testbench behaviour lives in Python.
+  `$display`. Testbench behaviour lives in Python. The one exception is a
+  debug trace inside `` `ifdef ANDROMEDA_DEBUG ``, which synthesis never sees;
+  a unit's `make DEBUG=1` compiles it in (only `Fetch/sim` has this so far).
 - Connect instance ports by name (`.clk(clk)`), never by position.
 - Don't hard-code architectural widths. Use a parameter or package localparam
   such as `XLEN`.

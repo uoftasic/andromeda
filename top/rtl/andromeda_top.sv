@@ -47,5 +47,46 @@ module andromeda_top
   output logic [COMMIT_W-1:0][XLEN-1:0]  trace_rd_data,    //   and value written
   output logic                           trace_trap        // An exception or interrupt was taken this cycle
 );
+    logic               redirect_valid;
+    logic [XLEN-1:0]    redirect_pc;
+    logic [XLEN-1:0]    imem_req_addr;
+    logic               imem_req_ready;
+    logic               imem_req_valid;
+    logic               imem_resp_valid;
+    logic [FETCH_W-1:0][ILEN-1:0] imem_resp_data;
+    logic imem_resp_err;
+
+
+    ifu ifu_inst(
+        .clk        (clk),
+        .rst_n      (rst_n),
+
+        .boot_addr  (RST_VEC),        // PC after reset
+        .flush,            // fe_flush from pipe_ctrl
+
+        // Redirect from branch execution
+        .redirect_valid,   // Restart fetch at redirect_pc
+        .redirect_pc,
+
+        // Instruction memory request channel
+        .imem_req_valid,   // Instruction fetch request
+        .imem_req_ready,   // Memory accepts the request
+        .imem_req_addr,    // 16-byte aligned fetch block address
+
+        // Instruction memory response channel (no ready: the ifu always accepts)
+        .imem_resp_valid,  // Fetch data returned (in request order)
+        .imem_resp_data,   // 4 instructions, lowest address in bits [31:0]
+        .imem_resp_err,    // Access fault on this fetch
+
+        // Speculative return address stack update
+        .ras_push,         // Call: push ras_push_addr
+        .ras_pop,          // Return: pop the top entry
+        .ras_push_addr,    // Return address of the call
+
+        // Fetch buffer enqueue channel
+        .fb_enq_valid,     // Block ready for the fetch buffer
+        .fb_enq_ready,     // Fetch buffer has at least 4 free entries
+        .fb_enq_slot 
+    );
 
 endmodule
