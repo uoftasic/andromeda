@@ -4,14 +4,7 @@
 // they commit.
 module lsu
   import andromeda_pkg::*;
-#(
-   localparam int unsigned LQ_CNT_W   = $clog2(LQ_DEPTH + 1),
-   localparam int unsigned SQ_CNT_W   = $clog2(SQ_DEPTH + 1),
-   localparam int unsigned CM_CNT_W   = $clog2(COMMIT_W + 1),
-   localparam int unsigned UOP_W      = 36 + ROB_IDX_W + PREG_IDX_W + LQ_ID_W + SQ_ID_W, 
-   localparam int unsigned WB_W       = 72 + ROB_IDX_W + PREG_IDX_W,
-   localparam int unsigned WAKEUP_W   = 1 + PREG_IDX_W
-)(
+(
   input  logic                              clk,
   input  logic                              rst_n,
 
@@ -58,9 +51,86 @@ module lsu
   input  logic                              dmem_resp_err     // Access fault
 );
 
+    logic [OP_W-1:0]     in_op;
+    logic [1:0]          in_size;
+    logic                in_signed;
+    logic                in_rd_en;
+    logic [XLEN-1:0]     in_imm;
+    logic [ROB_IDX_W:0]  in_rob_id;
+    logic [PREG_IDX_W:0] in_prd;
+    logic [LQ_ID_W-1:0]  in_lq_id;
+    logic [SQ_ID_W-1:0]  in_sq_id;
+
+    assign in_op = in_uop.op;
+    assign in_size = in_uop.mem_size;
+    assign in_signed = in_uop.mem_signed;
+    assign in_imm = in_uop.imm;
+    assign in_rd_en = in_uop.rd_en;
+    assign in_rob_id = in_uop.rob_id;
+    assign in_prd = in_uop.prd;
+    assign in_lq_id = in_uop.lq_id;
+    assign in_sq_id = in_uop.sq_id;
+
+    //Replace below with corresponding typedefs
+    logic [LQ_ID_W-1:0] lq_head_q; 
+    logic [LQ_ID_W-1:0] lq_tail_q;
+    logic [SQ_ID_W-1:0] sq_head_q;
+    logic [SQ_ID_W-1:0] sq_cmt_q;
+    logic [SQ_ID_W-1:0] sq_tail_q;
+    
+
+    logic [LQ_ID_W-1:0] num_alloc_ld;
+    logic [SQ_ID_W-1:0] num_alloc_st;
+
+    // Calculate number of allocated loads/stores
+    always_comb begin
+      // Keep as is (avoiding loops for now)
+      num_alloc_ld = lq_alloc_valid[0] + lq_alloc_valid[1] + lq_alloc_valid[2] + lq_alloc_valid[3];
+      num_alloc_st = sq_alloc_valid[0] + sq_alloc_valid[1] + sq_alloc_valid[2] + sq_alloc_valid[3];
+    end
+
+    //typedef
+    logic [LQ_ID_W-1:0] lq_head_d; 
+    logic [LQ_ID_W-1:0] lq_tail_d;
+    logic [SQ_ID_W-1:0] sq_head_d;
+    logic [SQ_ID_W-1:0] sq_cmt_d;
+    logic [SQ_ID_W-1:0] sq_tail_d;
+
+    always_comb begin
+      lq_head_d = lq_head_q + cm_load_cnt;
+      lq_tail_d = lq_tail_q + num_alloc_ld;
+      sq_cmt_d = sq_cmt_q + cm_store_cnt;
+      sq_head_d = sq_cmt_d;
+      sq_tail_d = sq_tail_q + num_alloc_st; 
+    end
+
+    always_ff @(posedge clk or negedge rst_n) begin
+      if (!rst_n) begin
+        lq_head_q <= 'b0;
+        lq_tail_q <= 'b0;
+        sq_head_q <= 'b0;
+        sq_cmt_q  <= 'b0;
+        sq_tail_q <= 'b0;
+      end else begin
+        lq_head_q <= lq_head_d;
+        lq_tail_q <= lq_tail_d;
+        sq_head_q <= sq_head_d;
+        sq_cmt_q  <= sq_cmt_d;
+        sq_tail_q <= sq_tail_d;
+      end
+    end
+
+
+    assign lq_alloc_id = {lq_tail_q + lq_alloc_valid[0] + lq_alloc_valid[1] + lq_alloc_valid[2],
+                          lq_tail_q + lq_alloc_valid[0] + lq_alloc_valid[1],
+                          lq_tail_q + lq_alloc_valid[0],
+                          lq_tail_q};
+    assign sq_alloc_id = {sq_tail_q + sq_alloc_valid[0] + sq_alloc_valid[1] + sq_alloc_valid[2],
+                          sq_tail_q + sq_alloc_valid[0] + sq_alloc_valid[1],
+                          sq_tail_q + sq_alloc_valid[0],
+                          sq_tail_q};
+
     assign in_ready       = 1'b1;
-    assign lq_alloc_id    = '0;
-    assign sq_alloc_id    = '0;
     assign sq_tail        = '0;
     assign lq_free_cnt    = '0;  
     assign sq_free_cnt    ='0;         
