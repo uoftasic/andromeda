@@ -66,14 +66,49 @@ module rob
 
   // circular buffer
   rob_id_t head_q, tail_q; // note {wrap, 0-31}
-  logic [ROB_DEPTH-1:0] valid_instructions_q;
-  logic [ROB_DEPTH-1:0] completed_instructions_q;
+  logic [ROB_DEPTH-1:0] valid_instructions_q; // this stores which instructions are currently in the ROB buffer 
+  logic [ROB_DEPTH-1:0] completed_instructions_q; // this stores which instructions are completed / not completed
+
+  // store the instruction information given at dispatch which is needed later for retiring
+  typedef struct packed {
+    logic [XLEN-1:0]   pc;
+    fu_type_e          fu_type;  // with op, identifies loads, stores and MRET
+    logic [OP_W-1:0]   op;
+    logic              rd_en;
+    logic              rd_fp;
+    logic [AREG_W-1:0] rd_arch;
+    ptag_t             prd;
+    ptag_t             old_prd;
+  } rob_entry_t;
+
+  // known at writeback, read at retire
+  typedef struct packed {
+    logic [XLEN-1:0]     data;
+    logic                exc_valid;
+    exc_cause_e          exc_cause;
+    logic [XLEN-1:0]     exc_tval;
+    logic [FFLAGS_W-1:0] fflags;
+    logic                br_taken;
+    logic [XLEN-1:0]     br_target;
+    logic                br_mispredict;
+  } rob_result_t;
+
+  rob_entry_t entries_q [ROB_DEPTH];
+  rob_result_t results_q [ROB_DEPTH];
 
   // --allocate--
 
   // keep track of wrap around
   logic [ROB_IDX_W-1:0] alloc_idx [DISPATCH_W]; // {5 bits by 32 lines}
   logic [$clog2(DISPATCH_W+1)-1:0] alloc_cnt;
+
+  // --retire--
+
+  // keep track of wrap around
+  logic [ROB_IDX_W-1:0] retire_idx [DISPATCH_W]; // {5 bits by 32 lines}
+  logic [$clog2(DISPATCH_W+1)-1:0] retire_cnt;
+
+  // --allocate--
 
   // Combination logic
   always_comb begin
@@ -84,14 +119,13 @@ module rob
     for (int i = 0; i < DISPATCH_W; i++) begin
       alloc_id[i] = tail_q + ROB_ID_W'(i); // which ROB slots to populate
       alloc_idx[i] = ROB_IDX_W'(tail_q + ROB_ID_W'(i)); // casts to lower 5 bits
-      alloc_cnt += alloc_valid[i];
+      alloc_cnt += alloc_valid[i]; // how many instructions are being allocated
     end
 
     head_id = head_q;
     free_cnt = ROB_ID_W'(ROB_DEPTH) - (tail_q - head_q);
   end
 
-// keep track of valid instructions and move tail
   always_ff @(posedge clk or negedge rst_n) begin
     // set everything to zero upon reset
     if (!rst_n) begin
@@ -105,7 +139,7 @@ module rob
 
     else begin
 
-      // find valid instructions and move tail
+      // find new dispatch instructions and move tail
       for (int i = 0; i < DISPATCH_W; i++) begin 
         if (alloc_valid[i]) begin
           valid_instructions_q[alloc_idx[i]] <= 1;
@@ -114,12 +148,53 @@ module rob
       end
 
       tail_q <= tail_q + ROB_ID_W'(alloc_cnt);
-
     end
 
   end
 
+  // save each instructions information into entries_q at dispatch to use later for commit
+  always_ff @(posedge clk) begin
+    for (int i = 0; i < DISPATCH_W; i++) begin
+
+      if (alloc_valid[i]) begin
+        entries_q[alloc_idx[i]] <= '{
+          pc: alloc_uop[i].pc,
+          fu_type: alloc_uop[i].fu_type,
+          op: alloc_uop[i].op,
+          rd_en: alloc_uop[i].rd_en,
+          rd_fp: alloc_uop[i].rd_fp,
+          rd_arch: alloc_uop[i].rd_arch,
+          prd: alloc_uop[i].prd,
+          old_prd: alloc_uop[i].old_prd
+        };
+      end
+    end
+  end
+
+  // --writeback--
+
+  always_ff @(posedge clk) begin
+
+    // mark finished instructions from the execution units, in any order
+    for (int p = 0; p < NUM_PORTS; p++) begin
+      if (wb[p].valid) begin // wb[p] is the output of the pth execution unit 
+        completed_instructions_q[wb[p].rob_id[ROB_IDX_W-1:0]] <= 1; // set the completed instruction to 1
+      end
+    end
+  end
+
+  // --flush-- 
+  
+
   // --retire--
+  always_ff @(posedge clk) begin
+    for (int i = 0; i < COMMIT_W; i++) begin
+      if (completed_instructions_q[])
+    end
+  end
+
+
+  // scan through the 
 
 
 
