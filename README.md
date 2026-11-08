@@ -64,18 +64,9 @@ named `*_pkg.sv` are compiled before all other sources.
   leave both out.
 - There is one clock domain. Every flop triggers on `posedge clk`. Don't use
   negedge flops, gated clocks, divided clocks or logic on the clock path.
-- `rst_n` is **active-low and asynchronous**: it clears flops right away,
-  without waiting for a clock edge. This matches `IP/sync_fifo.v`.
+- `rst_n` is **active-low and synchronous**
 
-  ```systemverilog
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      count_q <= '0;
-    end else begin
-      count_q <= count_d;
-    end
-  end
-  ```
+
 
 - Release `rst_n` in step with `clk`. Testbenches already do this. When
   `rst_n` comes from off-chip, `top` must pass it through a reset synchronizer.
