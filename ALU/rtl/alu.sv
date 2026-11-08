@@ -118,6 +118,37 @@ module alu
     wb.prd    = wb_prd_q;
     wb.data   = wb_data_q;
   end
+  
+  `ifdef DBG
+    wire [XLEN-1:0] wb_data = wb.data;
+    wire wb_valid = wb.valid;
+    wire [XLEN-1:0] wb_rob_id = wb.rob_id;
+    wire [XLEN-1:0] wb_prd = wb.prd;
+
+    wire [XLEN-1:0] in_prd = in_uop.prd;
+    wire [XLEN-1:0] in_robid = in_uop.rob_id;
+
+    logic [8*8-1:0] dbg_op;
+
+    always_comb begin
+      case (in_uop.op)
+          'd0: dbg_op = "ADD";
+          'd1: dbg_op = "SUB";
+          'd2: dbg_op = "SLL";    // SLL, SLLI
+          'd3: dbg_op = "SLT";    // SLT, SLTI
+          'd4: dbg_op = "SLTU";   // SLTU, SLTIU
+          'd5: dbg_op = "XOR";    // XOR, XORI
+          'd6: dbg_op = "SRL";   // SRL, SRLI
+          'd7: dbg_op = "SRA";    // SRA, SRAI
+          'd8: dbg_op = "OR";    // OR, ORI
+          'd9: dbg_op = "AND";    // AND, ANDI
+          'd10: dbg_op = "LUI";    // rd = imm
+          'd11: dbg_op = "AUIPC";   // rd = pc + imm
+          default: dbg_op = "???";
+      endcase
+    end
+
+  `endif
 
   assign wakeup.valid = wb_valid_q & wb_rd_en_q;
   assign wakeup.ptag  = wb_prd_q;

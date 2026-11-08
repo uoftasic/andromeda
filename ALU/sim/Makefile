@@ -6,6 +6,7 @@
 #   make COCOTB_TEST_FILTER=<regex>     run only tests whose name matches
 #   make clean                          remove sim_build/ and results.xml
 
+WAVES=1
 SIM           ?= icarus
 TOPLEVEL_LANG ?= verilog
 
@@ -16,13 +17,14 @@ SIM_DIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 UNIT_DIR := $(abspath $(SIM_DIR)/..)
 PROJ_DIR := $(abspath $(UNIT_DIR)/..)
 RTL_DIR  := $(UNIT_DIR)/rtl
+PKG_DIR  := $(PROJ_DIR)/pkg
 IP_DIR   := $(PROJ_DIR)/IP
 
 # ---------------------------------------------------------------------------
 # HDL sources
 # Packages (*_pkg.sv) are listed first so they compile before their users.
 # ---------------------------------------------------------------------------
-RTL_PKGS := $(wildcard $(RTL_DIR)/*_pkg.sv)
+RTL_PKGS := $(wildcard $(PKG_DIR)/*_pkg.sv $(RTL_DIR)/*_pkg.sv)
 RTL_SRCS := $(filter-out $(RTL_PKGS),$(wildcard $(RTL_DIR)/*.sv $(RTL_DIR)/*.v))
 
 VERILOG_SOURCES      += $(RTL_PKGS) $(RTL_SRCS)
@@ -38,6 +40,6 @@ COCOTB_TOPLEVEL     ?= alu
 COCOTB_TEST_MODULES ?= test_alu
 
 # Extra iverilog compile flags (cocotb already passes -g2012), e.g. -DSIM
-COMPILE_ARGS +=
+COMPILE_ARGS += -DDBG
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
