@@ -189,14 +189,14 @@ module rob
   // --retire--
   always_ff @(posedge clk) begin
     for (int i = 0; i < COMMIT_W; i++) begin
-      if (completed_instructions_q[])
+      if (completed_instructions_q[i]) begin
+        
+      end
     end
   end
 
 
   // scan through the 
-
-
 
 
 endmodule

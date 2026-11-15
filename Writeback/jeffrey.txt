@@ -1,0 +1,43 @@
+My understanding for allocate for the rob:
+
+For every clock cycle:
+1. Dispatch sends instructions (alloc_uop) and marks which lanes are used (alloc_valid),
+   only as many as free_cnt allows.
+2. The ROB offers IDs alloc_id[i] = tail + i; dispatch copies them into uop.rob_id.
+3. For each valid lane, the ROB writes the payload (rd_en, rd_fp, rd_arch, prd, old_prd)
+   into slot tail + i and marks it valid and incomplete.
+4. The tail advances by the number of valid lanes.
+5. The ROB reports free_cnt = 32 - (tail - head).
+6. On flush, allocation is ignored and the ROB empties.
+
+The tail moves forward at allocation; the head moves forward at retirement.
+
+
+Nov 8th 2026
+
+writeback: when the instruction has been executed
+retiring/commiting: when the istruction is moved to the RRAT
+RRAT: Retirement Register Alias Table (look into more)
+head: the oldest ROB entry (waiting to commit)
+tail: where the next ROB entry should go
+
+Storage: 
+The ROB stores instructions that have not yet been retired by using entries_q, which contains structs that contain info needed for commiting and retiring.
+The ROB also updates head_q, tail_q to tell the top level where the head and the tail is.
+
+Allocating
+During allocation, the ROB will offer valid spots in the circular queue via alloc_id[i], while the ROB reads alloc_valid[i] to determine if dispatch wants to write there.
+If the ROB wants to write, we mark a valid instruction using valid_instructions_q and make sure we set completed_instructions_q as uncompleted.
+The ROB then writes into entries_q with the parameters from alloc_uop[i] relavant later for retiring for commiting later.
+
+Writeback:
+Checks if wb has any valid entiries that have been completed by the execution units and indicates that the instruction is completed.
+
+
+
+Retiring:
+
+
+TODO:
+Add flush handling
+

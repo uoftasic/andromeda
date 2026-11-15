@@ -1,0 +1,10 @@
+# cocotb / Icarus outputs
+sim_build/
+results.xml
+*.vvp
+*.vcd
+*.fst
+
+# Python
+__pycache__/
+*.pyc
