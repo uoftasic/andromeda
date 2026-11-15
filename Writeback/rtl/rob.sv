@@ -105,12 +105,10 @@ module rob
   // --retire--
 
   // keep track of wrap around
-  logic [ROB_IDX_W-1:0] retire_idx [DISPATCH_W]; // {5 bits by 32 lines}
-  logic [$clog2(DISPATCH_W+1)-1:0] retire_cnt;
+  logic [ROB_IDX_W-1:0] retire_idx [COMMIT_W]; // {5 bits by 32 lines}
+  logic [$clog2(COMMIT_W+1)-1:0] retire_cnt;
 
   // --allocate--
-
-  // Combination logic
   always_comb begin
 
     alloc_cnt = '0;
@@ -126,6 +124,52 @@ module rob
     free_cnt = ROB_ID_W'(ROB_DEPTH) - (tail_q - head_q);
   end
 
+  // --retire--
+  always_comb begin
+    // flag to make sure that retiring instructions are in order
+    logic ok_order;
+
+    ok_order = '1;
+
+    retire_cnt = '0;
+
+    for (int i = 0; i < COMMIT_W; i++) begin
+      retire_idx[i] = ROB_IDX_W'(head_q + ROB_ID_W'(i)); // wrap around at 32
+
+      if (ok_order && valid_instructions_q[retire_idx[i]] && completed_instructions_q[retire_idx[i]]) begin
+        retire_cnt += 1;
+
+      end else ok_order = '0;
+
+    end
+
+    cm_load_cnt = '0;
+    cm_store_cnt = '0;
+    fflags_accrue = '0;
+
+    for (int i = 0; i < COMMIT_W; i++) begin
+      // collect the info for retireing
+      rob_entry_t e;
+      rob_result_t r;
+      logic v;
+      e = entries_q[retire_idx[i]];
+      r = results_q[retire_idx[i]];
+      v = (i < retire_cnt);
+
+      // to rename
+      cm_valid[i] = v;
+      cm_rd_en[i] = v;
+
+      // to lsu
+
+      // to csr
+
+      // trace
+
+      //trap
+    end
+  end
+
   always_ff @(posedge clk or negedge rst_n) begin
     // set everything to zero upon reset
     if (!rst_n) begin
@@ -134,69 +178,70 @@ module rob
       tail_q <= '0;
       valid_instructions_q <= '0;
       completed_instructions_q <= '0;
+      entries_q <= '{default: '0};
+      results_q <= '{default: '0};
 
     end
 
     else begin
+
+      // --allocate--
 
       // find new dispatch instructions and move tail
       for (int i = 0; i < DISPATCH_W; i++) begin 
         if (alloc_valid[i]) begin
           valid_instructions_q[alloc_idx[i]] <= 1;
           completed_instructions_q[alloc_idx[i]] <= 0;
+
+          // save each instructions information into entries_q at dispatch to use later for commit
+          entries_q[alloc_idx[i]] <= '{
+            pc: alloc_uop[i].pc,
+            fu_type: alloc_uop[i].fu_type,
+            op: alloc_uop[i].op,
+            rd_en: alloc_uop[i].rd_en,
+            rd_fp: alloc_uop[i].rd_fp,
+            rd_arch: alloc_uop[i].rd_arch,
+            prd: alloc_uop[i].prd,
+            old_prd: alloc_uop[i].old_prd
+          };
+
         end
       end
 
       tail_q <= tail_q + ROB_ID_W'(alloc_cnt);
-    end
 
-  end
+          // --writeback--
 
-  // save each instructions information into entries_q at dispatch to use later for commit
-  always_ff @(posedge clk) begin
-    for (int i = 0; i < DISPATCH_W; i++) begin
+      // mark finished instructions from the execution units, in any order
+      for (int p = 0; p < NUM_PORTS; p++) begin
+        if (wb[p].valid) begin // wb[p] is the output of the pth execution unit 
+          completed_instructions_q[wb[p].rob_id[ROB_IDX_W-1:0]] <= 1; // set the completed instruction to 1
 
-      if (alloc_valid[i]) begin
-        entries_q[alloc_idx[i]] <= '{
-          pc: alloc_uop[i].pc,
-          fu_type: alloc_uop[i].fu_type,
-          op: alloc_uop[i].op,
-          rd_en: alloc_uop[i].rd_en,
-          rd_fp: alloc_uop[i].rd_fp,
-          rd_arch: alloc_uop[i].rd_arch,
-          prd: alloc_uop[i].prd,
-          old_prd: alloc_uop[i].old_prd
-        };
+          // save the result of the execution for commit
+          results_q[wb[p].rob_id[ROB_IDX_W-1:0]] <= '{
+            data: wb[p].data,
+            exc_valid: wb[p].exc_valid,
+            exc_cause: wb[p].exc_cause,
+            exc_tval: wb[p].exc_tval,
+            fflags: wb[p].fflags,
+            br_taken: wb[p].br_taken,
+            br_target: wb[p].br_target,
+            br_mispredict: wb[p].br_mispredict
+          };
+        end
+ 
       end
-    end
-  end
 
-  // --writeback--
+      // --retire-- 
 
-  always_ff @(posedge clk) begin
+      head_q <= head_q + ROB_ID_W'(retire_cnt);
 
-    // mark finished instructions from the execution units, in any order
-    for (int p = 0; p < NUM_PORTS; p++) begin
-      if (wb[p].valid) begin // wb[p] is the output of the pth execution unit 
-        completed_instructions_q[wb[p].rob_id[ROB_IDX_W-1:0]] <= 1; // set the completed instruction to 1
+      for (int i = 0; i < COMMIT_W; i++) begin
+        if (i < retire_cnt) valid_instructions_q[retire_idx[i]] <= '0;
       end
+
     end
+
   end
-
-  // --flush-- 
-  
-
-  // --retire--
-  always_ff @(posedge clk) begin
-    for (int i = 0; i < COMMIT_W; i++) begin
-      if (completed_instructions_q[i]) begin
-        
-      end
-    end
-  end
-
-
-  // scan through the 
-
 
 endmodule
