@@ -8,3 +8,6 @@ results.xml
 # Python
 __pycache__/
 *.pyc
+
+# Personal notes
+Writeback/jeffrey.txt

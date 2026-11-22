@@ -158,16 +158,44 @@ module rob
 
       // to rename
       cm_valid[i] = v;
-      cm_rd_en[i] = v;
+      cm_rd_en[i] = v && e.rd_en;
+      cm_rd_fp[i] = e.rd_fp;
+      cm_rd_arch[i] = e.rd_arch;
+      cm_prd[i] = e.prd;
+      cm_old_prd[i] = e.old_prd;
 
       // to lsu
+      if (v && e.fu_type == FU_LSU && e.op == OP_W'(LSU_LOAD))  cm_load_cnt  += 1;
+      if (v && e.fu_type == FU_LSU && e.op == OP_W'(LSU_STORE)) cm_store_cnt += 1;
 
       // to csr
+      if (v && e.fu_type == FU_FPU) fflags_accrue |= r.fflags;
 
-      // trace
-
-      //trap
+      // to trace
+      trace_valid[i]   = v;
+      trace_pc[i]      = e.pc;
+      trace_instr[i]   = '0;            // see note below
+      trace_rd_we[i]   = v && e.rd_en;
+      trace_rd_fp[i]   = e.rd_fp;
+      trace_rd_addr[i] = e.rd_arch;
+      trace_rd_data[i] = r.data;
     end
+
+    // trap: the head instruction
+    trap_valid  = take_exc || take_irq;
+    trap_is_irq = take_irq;
+    trap_cause  = take_irq ? EXC_CAUSE_W'(/* irq cause from csr? */ 0)
+                          : EXC_CAUSE_W'(results_q[retire_idx[0]].exc_cause);
+    trap_pc     = entries_q[retire_idx[0]].pc;   // becomes mepc
+    trap_tval   = take_irq ? '0 : results_q[retire_idx[0]].exc_tval;
+    trace_trap  = trap_valid;
+
+    // flush
+    flush_valid = trap_valid || take_mispred || take_mret;
+    flush_pc    = trap_valid   ? mtvec
+                : take_mret    ? mepc
+                : results_q[retire_idx[0]].br_taken ? results_q[retire_idx[0]].br_target
+                                                    : entries_q[retire_idx[0]].pc + XLEN'(4);
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -210,7 +238,7 @@ module rob
 
       tail_q <= tail_q + ROB_ID_W'(alloc_cnt);
 
-          // --writeback--
+      // --writeback--
 
       // mark finished instructions from the execution units, in any order
       for (int p = 0; p < NUM_PORTS; p++) begin
