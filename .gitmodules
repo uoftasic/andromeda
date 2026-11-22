@@ -1,0 +1,4 @@
+[submodule "FPU/rtl/cvfpu"]
+	path = FPU/rtl/cvfpu
+	url = https://github.com/openhwfoundation/cvfpu.git
+	branch = master
