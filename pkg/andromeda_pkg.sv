@@ -85,6 +85,40 @@ package andromeda_pkg;
   localparam int unsigned CSR_ADDR_W  = 12;  // CSR address (instr[31:20])
   localparam int unsigned CSR_OP_W    = 3;   // csr_unit request op: CSRRW/S/C and immediate forms
 
+  // CSR addresses (RISC-V privileged spec; full map in Writeback/csr_map.md).
+  // addr[11:10] = 2'b11 means read-only: writes raise EXC_ILLEGAL_INSTR.
+  localparam logic [CSR_ADDR_W-1:0] CSR_FFLAGS    = 12'h001;
+  localparam logic [CSR_ADDR_W-1:0] CSR_FRM       = 12'h002;
+  localparam logic [CSR_ADDR_W-1:0] CSR_FCSR      = 12'h003;  // {frm, fflags}
+  localparam logic [CSR_ADDR_W-1:0] CSR_MSTATUS   = 12'h300;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MISA      = 12'h301;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MIE       = 12'h304;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MTVEC     = 12'h305;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MSCRATCH  = 12'h340;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MEPC      = 12'h341;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MCAUSE    = 12'h342;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MTVAL     = 12'h343;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MIP       = 12'h344;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MCYCLE    = 12'hB00;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MINSTRET  = 12'hB02;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MCYCLEH   = 12'hB80;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MINSTRETH = 12'hB82;
+  localparam logic [CSR_ADDR_W-1:0] CSR_MHARTID   = 12'hF14;  // read-only, reads 0
+
+  // mstatus field positions
+  localparam int unsigned MSTATUS_MIE_BIT  = 3;
+  localparam int unsigned MSTATUS_MPIE_BIT = 7;
+  localparam int unsigned MSTATUS_MPP_LSB  = 11;  // [12:11], hardwired to 2'b11 (M-mode)
+  localparam int unsigned MSTATUS_FS_LSB   = 13;  // [14:13]
+  localparam int unsigned MSTATUS_SD_BIT   = 31;  // set when FS == 2'b11 (dirty)
+
+  // mie / mip bit positions, also the mcause interrupt codes
+  localparam int unsigned IRQ_M_TIMER    = 7;   // MTIE / MTIP
+  localparam int unsigned IRQ_M_EXTERNAL = 11;  // MEIE / MEIP
+
+  // misa: MXL = 1 (RV32), extensions I (bit 8) and F (bit 5)
+  localparam logic [XLEN-1:0] MISA_VALUE = 32'h4000_0120;
+
   // ===========================================================================
   // 4. Execution port indices (Section 1.2)
   //    Use these to index the wb[NUM_PORTS] and wakeup[NUM_PORTS] arrays.
